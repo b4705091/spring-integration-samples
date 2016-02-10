@@ -1,0 +1,34 @@
+#spring.datasource.jndi-name: java:comp/env/jdbc/ReportDs
+logging: 
+  level: 
+    root: DEBUG
+    cat.mnp: DEBUG
+    com.jcraft.jsch: DEBUG
+    
+    org.springframework: WARN
+    org.springframework.amqp: DEBUG
+    org.springframework.amqp.rabbit.listener: INFO
+    org.springframework.amqp.rabbit.core.RabbitTemplate: INFO
+    org.springframework.integration.smpp.core.SmesMessageSpecification: INFO
+    org.springframework.jms: DEBUG
+    
+    org.apache: WARN
+    org.apache.cxf: INFO
+    org.apache.jasper: INFO
+    httpclient.wire: WARN
+    
+    org.hibernate: INFO
+    
+    com.sun.xml.bind: INFO
+    com.sun.mail.imap: INFO
+    javax.xml: INFO
+    javax.activation: INFO
+    com.sun.mail.smtp: INFO
+    
+    org.jsmpp.session: INFO
+    
+    org.jboss: INFO
+    org.wildfly: INFO
+  pattern: 
+    console: "%d{HH:mm:ss.SSS} [%thread] %-5level %logger{30} - %msg%n"
+    

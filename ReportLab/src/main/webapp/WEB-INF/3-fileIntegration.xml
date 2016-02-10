@@ -1,0 +1,128 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-mail="http://www.springframework.org/schema/integration/mail"
+       xmlns:int-amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:int-jdbc="http://www.springframework.org/schema/integration/jdbc"
+       xmlns:int-jms="http://www.springframework.org/schema/integration/jms"
+       xmlns:int-sftp="http://www.springframework.org/schema/integration/sftp"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.2.xsd
+       http://www.springframework.org/schema/integration/mail http://www.springframework.org/schema/integration/mail/spring-integration-mail-4.2.xsd
+       http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+       http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.2.xsd
+       http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.2.xsd
+       http://www.springframework.org/schema/integration/jms http://www.springframework.org/schema/integration/jms/spring-integration-jms-4.2.xsd
+       http://www.springframework.org/schema/integration/sftp http://www.springframework.org/schema/integration/sftp/spring-integration-sftp-4.2.xsd">
+
+    <import resource="aqConfig.xml"/>
+    
+    <int-jms:message-driven-channel-adapter 
+        id="jmsReportTriggerListener"
+        container="reportListenerContainer"
+        channel="helloReportTriggerChannel"/>
+    
+    <int:channel id="helloReportTriggerChannel">
+        <int:interceptors>
+            <int:wire-tap channel="helloReportTriggerLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="helloReportTriggerLoggingChannel"
+        logger-name="com.report.simple.Logger" level="INFO"
+        expression="'Querying hello report' + headers"/>
+    
+    <int:chain
+        id="helloReportJdbcQuery"
+        input-channel="helloReportTriggerChannel"
+        output-channel="helloReportGeneratorChannel">
+        <int-jdbc:outbound-gateway 
+            data-source="reportDataSource"
+            max-rows-per-poll="0">
+            <int-jdbc:query>
+                <![CDATA[
+                    select 
+                      to_char(file_id) file_id
+                      ,to_char(item_number) item_number
+                      ,order_id
+                      ,msisdn
+                      ,iccid
+                      ,imsi
+                      ,result
+                    from INT_PI_FILE_SVC
+                    where created_date < to_date(:headers.MsgCreateTimestamp, 'yyyymmddhh24miss')
+                    order by file_id, item_number
+                ]]>
+            </int-jdbc:query>
+            <int-jdbc:request-handler-advice-chain>
+                <bean class="com.report.simple.handler.advice.NullToEmptyListAdvice"/>
+            </int-jdbc:request-handler-advice-chain>
+        </int-jdbc:outbound-gateway>
+        
+        <int:filter 
+            expression="!payload.isEmpty()"
+            discard-channel="helloReportEmptyLoggingChannel"/>
+        
+        <int:header-enricher>
+            <int:header name="file_directory" value="D:/Desktop/Report"/>
+            <int:header name="file_name" expression="'HelloReport' + @dateFormatterSupport.format('yyyyMMddHHmmss') + '.csv'"/>
+        </int:header-enricher>
+    </int:chain>
+    
+    <int:logging-channel-adapter 
+        id="helloReportEmptyLoggingChannel"
+        logger-name="com.report.simple.Logger" level="INFO"
+        expression="'Ignore generating hello report, headers: ' + headers"/>
+    
+    <int:channel id="helloReportGeneratorChannel">
+        <int:interceptors>
+            <int:wire-tap channel="helloReportGeneratorLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="helloReportGeneratorLoggingChannel"
+        logger-name="com.report.simple.Logger" level="INFO"
+        expression="'Generating hello report ' + headers.file_name + ' of size: ' + payload.size()"/>
+    
+    <int:chain
+        id="helloReportGenerator"
+        input-channel="helloReportGeneratorChannel">
+        
+        <!--Split List<Map<String, String>> to Map<String, String>-->
+        <int:splitter/>
+        
+        <int:transformer expression="
+            payload['FILE_ID']
+            + '|' + payload['ITEM_NUMBER']
+            + '|' + payload['ORDER_ID']
+            + '|' + payload['MSISDN']
+            + '|' + payload['ICCID']
+            + '|' + payload['IMSI']
+            + '|' + payload['RESULT']
+        "/>
+        
+        <!--Aggregate String to List<String>-->
+        <int:aggregator/>
+        
+        <int:transformer>
+            <bean class="com.report.simple.ListToStringTransformer"/>
+        </int:transformer>
+        
+        <int-file:outbound-channel-adapter
+            auto-create-directory="true"
+            directory-expression="headers.file_directory"
+            mode="REPLACE"/>
+    </int:chain>
+    <!--    <int:logging-channel-adapter 
+    id="helloReportResultLoggingChannel"
+    logger-name="com.report.simple.Logger" level="INFO"
+    expression="'Result size: ' + payload.size()"/>-->
+    
+    <bean id="dateFormatterSupport" class="com.report.simple.support.LocalDateTimeFormatterSupport"/>
+</beans>

@@ -1,0 +1,58 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xmlns:jee="http://www.springframework.org/schema/jee"
+       xmlns:orcl="http://www.springframework.org/schema/data/orcl"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-mail="http://www.springframework.org/schema/integration/mail"
+       xmlns:int-amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:int-jdbc="http://www.springframework.org/schema/integration/jdbc"
+       xmlns:int-sftp="http://www.springframework.org/schema/integration/sftp"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.springframework.org/schema/jee http://www.springframework.org/schema/jee/spring-jee.xsd
+       http://www.springframework.org/schema/data/orcl http://www.springframework.org/schema/data/orcl/spring-data-orcl-1.0.xsd
+       http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.2.xsd
+       http://www.springframework.org/schema/integration/mail http://www.springframework.org/schema/integration/mail/spring-integration-mail-4.2.xsd
+       http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+       http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.2.xsd
+       http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.2.xsd
+       http://www.springframework.org/schema/integration/sftp http://www.springframework.org/schema/integration/sftp/spring-integration-sftp-4.2.xsd">
+
+    <jee:jndi-lookup 
+        id="reportDataSource"
+        jndi-name="jdbc/ReportDs" resource-ref="true"/>
+    
+    <!--    <bean id="dataSource" class="org.springframework.jndi.JndiObjectFactoryBean">
+        <property name="jndiName">
+            <value>java:comp/env/jdbc/ReportDs</value>
+        </property>
+    </bean>-->
+    
+    <bean id="oracleJdbc4NativeJdbcExtractor" class="org.springframework.jdbc.support.nativejdbc.OracleJdbc4NativeJdbcExtractor"/>
+    
+    <orcl:aq-jms-connection-factory 
+        id="aqConnectionFactory"
+        connection-factory-type="QUEUE_CONNECTION"
+        data-source="reportDataSource"
+        use-local-data-source-transaction="true"
+        native-jdbc-extractor="oracleJdbc4NativeJdbcExtractor"/>
+    
+    <task:executor id="aqListenerExecutor" pool-size="10"/>
+    
+    <bean id="reportListenerContainer" class="org.springframework.jms.listener.DefaultMessageListenerContainer">
+        <property name="connectionFactory" ref="aqConnectionFactory"/>
+        <property name="taskExecutor" ref="aqListenerExecutor"/>
+        <property name="sessionTransacted" value="true"/>
+        <property name="sessionAcknowledgeModeName" value="AUTO_ACKNOWLEDGE"/>
+        <property name="errorHandler">
+            <bean class="com.report.simple.util.LoggingErrorHandler"/>
+        </property>
+        <property name="recoveryInterval" value="5000"/>
+        <property name="autoStartup" value="true"/>
+        <property name="concurrentConsumers" value="1"/>
+        <property name="destinationName" value="HELLO_REPORT_Q"/>
+    </bean>
+</beans>
