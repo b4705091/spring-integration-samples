@@ -1,0 +1,48 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xmlns:jee="http://www.springframework.org/schema/jee"
+       xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-mail="http://www.springframework.org/schema/integration/mail"
+       xmlns:int-amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:int-jdbc="http://www.springframework.org/schema/integration/jdbc"
+       xmlns:int-sftp="http://www.springframework.org/schema/integration/sftp"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.springframework.org/schema/jee http://www.springframework.org/schema/jee/spring-jee.xsd
+       http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-1.5.xsd
+       http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.2.xsd
+       http://www.springframework.org/schema/integration/mail http://www.springframework.org/schema/integration/mail/spring-integration-mail-4.2.xsd
+       http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+       http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.2.xsd
+       http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.2.xsd
+       http://www.springframework.org/schema/integration/sftp http://www.springframework.org/schema/integration/sftp/spring-integration-sftp-4.2.xsd">
+    
+    <bean id="smppSession" class="cat.mnp.smpp.session.AutocloseSmppSessionFactoryBean">
+        <property name="host" value="localhost"/>
+        <property name="port" value="8056"/>
+        
+        <property name="bindType" value="BIND_TRX" />
+        <property name="systemId" value="user"/>
+        <property name="password" value="pass"/>
+        <property name="systemType" value="cp"/>
+        <property name="addrTon" value="UNKNOWN"/>
+        <property name="addrNpi" value="UNKNOWN"/>
+        
+        <property name="timeout" value="10"/>
+        <property name="autoStartup" value="false"/>
+    </bean>
+    
+    <bean id="autocloseSmppSessionAdvice" class="cat.mnp.integration.handler.advice.AutocloseSmppSessionAdvice">
+        <property name="smppSession" ref="smppSession"/>
+        <property name="scheduledExecutorService">
+            <bean id="autocloseSmppSession" class="org.springframework.scheduling.concurrent.ScheduledExecutorFactoryBean">
+                <property name="poolSize" value="1"/>
+            </bean>
+        </property>
+        <property name="closeDelay" value="10000"/>
+    </bean>
+</beans>

@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xmlns:rabbit="http://www.springframework.org/schema/rabbit"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-mail="http://www.springframework.org/schema/integration/mail"
+       xmlns:int-amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:int-jdbc="http://www.springframework.org/schema/integration/jdbc"
+       xmlns:int-sftp="http://www.springframework.org/schema/integration/sftp"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.springframework.org/schema/rabbit http://www.springframework.org/schema/rabbit/spring-rabbit-1.5.xsd
+       http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.2.xsd
+       http://www.springframework.org/schema/integration/mail http://www.springframework.org/schema/integration/mail/spring-integration-mail-4.2.xsd
+       http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+       http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.2.xsd
+       http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.2.xsd
+       http://www.springframework.org/schema/integration/sftp http://www.springframework.org/schema/integration/sftp/spring-integration-sftp-4.2.xsd">
+    
+    <task:executor id="rabbitMqConnectionFactoryExecutor" pool-size="10"/>
+    <rabbit:connection-factory id="rabbitMqConnectionFactory" 
+                               addresses="localhost:5672" 
+                               username="demo-integration-usr" password="demo-integration-pwd" 
+                               channel-cache-size="10" executor="rabbitMqConnectionFactoryExecutor"
+                               virtual-host="IntegrationVirtualHost"/>
+    <rabbit:template 
+        id="rabbitTemplate"
+        connection-factory="rabbitMqConnectionFactory"
+        message-converter="jsonMessageConverter"/>
+    
+    <bean id="jsonMessageConverter" class="org.springframework.amqp.support.converter.Jackson2JsonMessageConverter"/>
+
+    <task:executor id="promoMailListenerContainerExecutor" pool-size="2"/>
+    <bean id="promoMailListenerContainer" class="org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer">
+        <property name="taskExecutor" ref="promoMailListenerContainerExecutor"/>
+        <property name="acknowledgeMode" value="AUTO"/>
+        <property name="concurrentConsumers" value="2"/>
+        <property name="connectionFactory" ref="rabbitMqConnectionFactory"/>
+        <property name="defaultRequeueRejected" value="true"/>
+        <property name="missingQueuesFatal" value="true"/>
+        <property name="receiveTimeout" value="5000"/>
+        <property name="queueNames" value="PromoMailMsgQ"/>
+    </bean>
+    
+    <task:executor id="promoSmsListenerContainerExecutor" pool-size="10"/>
+    <bean id="promoSmsListenerContainer" class="org.springframework.amqp.rabbit.listener.SimpleMessageListenerContainer">
+        <property name="taskExecutor" ref="promoSmsListenerContainerExecutor"/>
+        <property name="acknowledgeMode" value="AUTO"/>
+        <property name="concurrentConsumers" value="2"/>
+        <property name="maxConcurrentConsumers" value="10"/>
+        <property name="connectionFactory" ref="rabbitMqConnectionFactory"/>
+        <property name="defaultRequeueRejected" value="true"/>
+        <property name="missingQueuesFatal" value="true"/>
+        <property name="receiveTimeout" value="5000"/>
+        <property name="queueNames" value="PromoSmsMsgQ"/>
+    </bean>
+</beans>

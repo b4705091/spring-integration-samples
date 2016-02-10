@@ -1,0 +1,205 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-mail="http://www.springframework.org/schema/integration/mail"
+       xmlns:int-amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:int-jdbc="http://www.springframework.org/schema/integration/jdbc"
+       xmlns:int-sftp="http://www.springframework.org/schema/integration/sftp"
+       xmlns:int-smpp="http://www.springframework.org/schema/integration/smpp"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.2.xsd
+       http://www.springframework.org/schema/integration/mail http://www.springframework.org/schema/integration/mail/spring-integration-mail-4.2.xsd
+       http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+       http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.2.xsd
+       http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.2.xsd
+       http://www.springframework.org/schema/integration/sftp http://www.springframework.org/schema/integration/sftp/spring-integration-sftp-4.2.xsd
+       http://www.springframework.org/schema/integration/smpp http://www.springframework.org/schema/integration/smpp/spring-integration-smpp-1.0.xsd">
+
+    <import resource="amqpConfig.xml"/>
+    <import resource="util.xml"/>
+    <import resource="mailConfig.xml"/>
+    <import resource="smsConfig.xml"/>
+    
+    <task:executor id="promotionBroadcastExecutor" pool-size="1" />
+    <int:inbound-channel-adapter 
+        id="promotionBroadcastServiceAdapter"
+        ref="promotionBroadcastService" method="listGoodCa" 
+        channel="promotionBroadcastCaListChannel">
+        <int:poller 
+            task-executor="promotionBroadcastExecutor"
+            fixed-delay="10000000000000" />
+    </int:inbound-channel-adapter>
+    
+    <int:channel id="promotionBroadcastCaListChannel">
+        <int:interceptors>
+            <int:wire-tap channel="promotionBroadcastCaListLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="promotionBroadcastCaListLoggingChannel"
+        logger-name="cat.dummy.Logger" level="INFO"
+        expression="'Broadcasting goodCaList of size: ' + payload.size()"/>
+    
+    <int:recipient-list-router
+        input-channel="promotionBroadcastCaListChannel">
+        <int:recipient channel="mailPromotionBroadcastChannel"/>
+        <int:recipient channel="smsPromotionBroadcastChannel"/>
+    </int:recipient-list-router>
+    
+    <int:channel id="mailPromotionBroadcastChannel"/>
+    
+        
+    <int:chain 
+        input-channel="mailPromotionBroadcastChannel">
+        <!--Split List<CaDto> to CaDto-->
+        <int:splitter apply-sequence="false"/>
+        
+        <!--<int:object-to-json-transformer />-->
+        
+        <int-amqp:outbound-channel-adapter
+            amqp-template="rabbitTemplate"
+            exchange-name="PromoMailFanout"/>
+    </int:chain>
+    
+    <int:channel id="smsPromotionBroadcastChannel"/>
+    
+    <int:chain 
+        input-channel="smsPromotionBroadcastChannel">
+        <!--Split List<CaDto> to CaDto-->
+        <int:splitter apply-sequence="false"/>
+        
+        <!--Split List<RtcServiceDto> to RtcServiceDto-->
+        <int:splitter
+            expression="payload.getSvcList()"
+            apply-sequence="false"/>
+        
+        <int-amqp:outbound-channel-adapter
+            amqp-template="rabbitTemplate"
+            exchange-name="PromoSmsFanout"/>
+    </int:chain>
+    
+    
+    
+    <!--MailListener part-->
+    <int-amqp:inbound-channel-adapter
+        id="promoMailSenderAdapter"
+        listener-container="promoMailListenerContainer"
+        channel="promoMailSenderChannel"
+        message-converter="jsonMessageConverter"
+        mapped-request-headers="amqp_redelivered"/>
+    
+    <int:channel id="promoMailSenderChannel">
+        <int:interceptors>
+            <int:ref bean="delayRedeliveryChannelInterceptor" />
+            <int:wire-tap channel="promoMailSenderLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="promoMailSenderLoggingChannel"
+        logger-name="cat.amqp.mail.Logger" level="INFO"
+        expression="'Receive amqp msg: ' + payload"/>
+    
+    <int:chain
+        id="promoMailSender"
+        input-channel="promoMailSenderChannel">
+        <int:header-enricher>
+            <int:header name="mail_from" value="anuchitr@ou.com"/>
+            <int:header name="mail_to" expression="'anuchitr2@ou.com'"/>
+            <!--<int:header name="mail_to" expression="payload.getEmail()"/>-->
+            <int:header name="mail_subject" expression="'Super special promotion for MY'"/>
+            <int:header name="mail_attachmentFilename" value="attachment.pdf"/>
+            <!--<int:header name="file_name" value="D:/Desktop/attachment.pdf"/>-->
+        </int:header-enricher>
+        
+        <int:transformer expression="new java.io.File('D:/Desktop/attachment.pdf')"/>
+        <int-file:file-to-bytes-transformer />
+        <!--Set mail body-->
+        <!--<int:transformer expression="'Dear ' + payload.getFirstName() + ' ' + payload.getLastName() + ', we have new promo'"/>-->
+        
+        <int-mail:outbound-channel-adapter
+            mail-sender="mailSender"/>
+    </int:chain>
+    <!--    <int:service-activator 
+    input-channel="promoMailSenderChannel"
+    expression="@mailServiceImpl.sendMsg(payload.getEmail(), 'Dear cust, we have new promo')"/>-->
+        
+    
+    <!--SmsListener part-->
+    <int-amqp:inbound-channel-adapter
+        id="promoSmsSenderAdapter"
+        listener-container="promoSmsListenerContainer"
+        channel="promoSmsSenderHeaderChannel"
+        message-converter="jsonMessageConverter"
+        mapped-request-headers="amqp_redelivered"/>
+    
+    <int:channel id="promoSmsSenderHeaderChannel">
+        <int:interceptors>
+            <int:ref bean="delayRedeliveryChannelInterceptor" />
+            <int:wire-tap channel="promoSmsSenderAmqpLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="promoSmsSenderAmqpLoggingChannel"
+        logger-name="cat.amqp.sms.Logger" level="INFO"
+        expression="'Receive amqp msg: ' + payload"/>
+        
+    <int:header-enricher
+        input-channel="promoSmsSenderHeaderChannel"
+        output-channel="promoSmsSenderChannel">
+        <int:header name="SERVICE_TYPE" value="MNP"/>
+            
+        <int:header name="SRC_ADDR_TON" type="org.jsmpp.bean.TypeOfNumber" value="NATIONAL"/>
+        <int:header name="SRC_ADDR_NPI" type="org.jsmpp.bean.NumberingPlanIndicator" value="UNKNOWN"/>
+        <int:header name="SRC_ADDRESS" value="1322"/>
+            
+        <int:header name="DST_ADDR_TON" type="org.jsmpp.bean.TypeOfNumber" value="UNKNOWN"/>
+        <int:header name="DST_ADDR_NPI" type="org.jsmpp.bean.NumberingPlanIndicator" value="UNKNOWN"/>
+        <int:header name="DEST_ADDRESS" expression="payload.getMsisdn()"/>
+            
+        <int:header name="DATA_CODING">
+            <bean class="org.jsmpp.bean.GeneralDataCoding">
+                <constructor-arg value="ALPHA_UCS2"/>
+            </bean>
+        </int:header>
+        
+        <!--Map RESULT to smsMsg-->
+        <int:header name="SMS_SHORT_MESSAGE" value="ยินดีต้อนรับสู่บริการ MY"/>
+    </int:header-enricher>
+        
+    <int:channel id="promoSmsSenderChannel">
+        <int:interceptors>
+            <int:wire-tap channel="promoSmsSenderLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="promoSmsSenderLoggingChannel"
+        logger-name="cat.amqp.sms.Logger" level="INFO"
+        expression="'Sending sms to: ' + headers.DEST_ADDRESS + ', msg: ' + headers.SMS_SHORT_MESSAGE"/>
+        
+    <int-smpp:outbound-gateway
+        request-channel="promoSmsSenderChannel"
+        reply-channel="promoSmsSenderResultLoggingChannel"
+        smpp-session-ref="smppSession">
+        <int-smpp:request-handler-advice-chain>
+            <ref bean="autocloseSmppSessionAdvice"/>
+        </int-smpp:request-handler-advice-chain>
+    </int-smpp:outbound-gateway>
+    
+    <int:logging-channel-adapter 
+        id="promoSmsSenderResultLoggingChannel"
+        logger-name="cat.amqp.sms.Logger" level="INFO"
+        expression="'Sms sent with id: ' + payload"/>
+    
+    <!--    <int:service-activator 
+    input-channel="promoSmsSenderChannel"
+    expression="@smsServiceImpl.sendMsg(payload.getMsisdn(), 'Dear cust, we have new promo')"/>-->
+        
+</beans>

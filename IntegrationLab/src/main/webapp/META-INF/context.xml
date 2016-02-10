@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Context path="/IntegrationLab" antiJARLocking="true" antiResourceLocking="true">
+  <ResourceLink global="mail/MailSession" name="mail/MailSession" type="javax.mail.Session"/>
+</Context>

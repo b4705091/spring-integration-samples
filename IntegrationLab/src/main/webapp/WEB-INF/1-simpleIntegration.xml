@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xmlns:task="http://www.springframework.org/schema/task"
+       xmlns:int="http://www.springframework.org/schema/integration"
+       xmlns:int-mail="http://www.springframework.org/schema/integration/mail"
+       xmlns:int-amqp="http://www.springframework.org/schema/integration/amqp"
+       xmlns:int-file="http://www.springframework.org/schema/integration/file"
+       xmlns:int-jdbc="http://www.springframework.org/schema/integration/jdbc"
+       xmlns:int-sftp="http://www.springframework.org/schema/integration/sftp"
+       xsi:schemaLocation="http://www.springframework.org/schema/beans http://www.springframework.org/schema/beans/spring-beans.xsd
+       http://www.springframework.org/schema/task http://www.springframework.org/schema/task/spring-task.xsd
+       http://www.springframework.org/schema/integration http://www.springframework.org/schema/integration/spring-integration-4.2.xsd
+       http://www.springframework.org/schema/integration/mail http://www.springframework.org/schema/integration/mail/spring-integration-mail-4.2.xsd
+       http://www.springframework.org/schema/integration/amqp http://www.springframework.org/schema/integration/amqp/spring-integration-amqp.xsd
+       http://www.springframework.org/schema/integration/file http://www.springframework.org/schema/integration/file/spring-integration-file-4.2.xsd
+       http://www.springframework.org/schema/integration/jdbc http://www.springframework.org/schema/integration/jdbc/spring-integration-jdbc-4.2.xsd
+       http://www.springframework.org/schema/integration/sftp http://www.springframework.org/schema/integration/sftp/spring-integration-sftp-4.2.xsd">
+
+    <task:executor id="promotionBroadcastExecutor" pool-size="1" />
+    <int:inbound-channel-adapter 
+        id="promotionBroadcastServiceAdapter"
+        ref="promotionBroadcastService" method="listGoodCa" 
+        channel="promotionBroadcastCaListChannel">
+        <int:poller 
+            task-executor="promotionBroadcastExecutor"
+            fixed-delay="10000000000000" />
+    </int:inbound-channel-adapter>
+    
+    <int:channel id="promotionBroadcastCaListChannel">
+        <int:interceptors>
+            <int:wire-tap channel="promotionBroadcastCaListLoggingChannel"/>
+        </int:interceptors>
+    </int:channel>
+    
+    <int:logging-channel-adapter 
+        id="promotionBroadcastCaListLoggingChannel"
+        logger-name="cat.dummy.Logger" level="INFO"
+        expression="'Broadcasting goodCaList of size: ' + payload.size()"/>
+    
+    <int:recipient-list-router
+        input-channel="promotionBroadcastCaListChannel">
+        <int:recipient channel="mailPromotionBroadcastChannel"/>
+        <int:recipient channel="smsPromotionBroadcastChannel"/>
+    </int:recipient-list-router>
+    
+    <int:channel id="mailPromotionBroadcastChannel"/>
+    
+        
+    <int:chain 
+        input-channel="mailPromotionBroadcastChannel">
+        <!--Split List<CaDto> to CaDto-->
+        <int:splitter apply-sequence="false"/>
+        
+        <!--
+        Message: #root
+        Header:  headers
+        Payload: payload
+        -->
+        <int:service-activator 
+            expression="@mailServiceImpl.sendMsg(payload.getEmail(), 'Dear cust, we have new promo')"/>
+        
+    </int:chain>
+    
+    <int:channel id="smsPromotionBroadcastChannel"/>
+    
+    <int:chain 
+        input-channel="smsPromotionBroadcastChannel">
+        <!--Split List<CaDto> to CaDto-->
+        <int:splitter apply-sequence="false"/>
+        
+        <!--Split List<RtcServiceDto> to RtcServiceDto-->
+        <int:splitter
+            expression="payload.getSvcList()"
+            apply-sequence="false"/>
+        
+        <int:service-activator 
+            expression="@smsServiceImpl.sendMsg(payload.getMsisdn(), 'Dear cust, we have new promo')"/>
+        
+    </int:chain>
+    
+</beans>
