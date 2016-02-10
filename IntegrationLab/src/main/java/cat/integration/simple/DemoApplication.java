@@ -7,8 +7,10 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.context.annotation.ImportResource;
 
 @SpringBootApplication
-@ImportResource("/WEB-INF/applicationContext.xml")
-//@ImportResource("classpath:/integration/applicationContext.xml")
+//@ImportResource("/WEB-INF/1-simpleIntegration.xml")
+//@ImportResource("/WEB-INF/2-amqpIntegration.xml")
+//@ImportResource("/WEB-INF/3-mailIntegration.xml")
+@ImportResource("/WEB-INF/4-smsIntegration.xml")
 public class DemoApplication {
     private static final Logger logger = LoggerFactory.getLogger(DemoApplication.class);
 
